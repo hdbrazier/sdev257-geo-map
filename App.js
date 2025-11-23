@@ -5,13 +5,12 @@ import {
   View,
   ActivityIndicator,
   SafeAreaView,
+  Platform,
 } from "react-native";
 import * as Location from "expo-location";
-import MapView, { Marker, Polygon } from "react-native-maps";
 
 const API_KEY = "AIzaSyAn2A4AOiXbgJgz1h5nkqLwOZrRT7-pfgg"; 
 const GEOCODE_URL = `https://maps.google.com/maps/api/geocode/json?key=${API_KEY}&latlng=`;
-
 
 const ipaRegion = {
   coordinates: [
@@ -37,6 +36,35 @@ const stoutRegion = {
   strokeWidth: 4,
 };
 
+let MapView, Marker, Polygon;
+if (Platform.OS === "web") {
+  // Placeholder components for web / Snack preview
+  MapView = ({ style }) => (
+    <View
+      style={[
+        style,
+        {
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#eee",
+        },
+      ]}
+    >
+      <Text style={{ textAlign: "center", padding: 16 }}>
+        Map preview is not supported here.{"\n"}
+        Run this app on a physical device using Expo Go to see the map.
+      </Text>
+    </View>
+  );
+  Marker = () => null;
+  Polygon = () => null;
+} else {
+  const Maps = require("react-native-maps");
+  MapView = Maps.default;
+  Marker = Maps.Marker;
+  Polygon = Maps.Polygon;
+}
+
 export default function App() {
   // Where Am I
   const [address, setAddress] = useState("Loading address...");
@@ -55,10 +83,9 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Distance helper (Haversine)
   const distanceInMeters = (lat1, lon1, lat2, lon2) => {
     const toRad = (value) => (value * Math.PI) / 180;
-    const R = 6371000; // Earth R in meters
+    const R = 6371000; // Earth radius in meters
 
     const dLat = toRad(lat2 - lat1);
     const dLon = toRad(lon2 - lon1);
@@ -95,58 +122,59 @@ export default function App() {
     return nearest;
   };
 
-  const setPosition = async ({ coords: { latitude, longitude } }) => {
-    setLatitude(latitude);
-    setLongitude(longitude);
-
-    if (API_KEY) {
-      try {
-        const resp = await fetch(`${GEOCODE_URL}${latitude},${longitude}`);
-        const data = await resp.json();
-        if (data.results && data.results.length > 0) {
-          setAddress(data.results[0].formatted_address);
-        } else {
-          setAddress("Address not found.");
-        }
-      } catch (error) {
-        console.log("Geocoding error:", error.message);
-        setAddress("Error looking up address.");
-      }
-    } else {
-      setAddress("Add your Google API key to see address.");
-    }
-
-    // Generate nearby restaurants based on user location
-    const userLocation = { latitude, longitude };
-    const generatedRestaurants = [
-      {
-        id: "1",
-        name: "Cheers Bar",
-        latitude: latitude + 0.002,
-        longitude: longitude + 0.001,
-      },
-      {
-        id: "2",
-        name: "Central Perk",
-        latitude: latitude - 0.0025,
-        longitude: longitude + 0.0015,
-      },
-      {
-        id: "3",
-        name: "Paddy's Irish Pub",
-        latitude: latitude + 0.0015,
-        longitude: longitude - 0.002,
-      },
-    ];
-
-    setRestaurants(generatedRestaurants);
-    const nearest = findNearest(userLocation, generatedRestaurants);
-    setNearestRestaurant(nearest);
-  };
-
   // Setup location 
   useEffect(() => {
     let watcher;
+
+    const setPosition = async ({ coords: { latitude, longitude } }) => {
+      setLatitude(latitude);
+      setLongitude(longitude);
+
+      // Geocoding API call
+      if (API_KEY) {
+        try {
+          const resp = await fetch(`${GEOCODE_URL}${latitude},${longitude}`);
+          const data = await resp.json();
+          if (data.results && data.results.length > 0) {
+            setAddress(data.results[0].formatted_address);
+          } else {
+            setAddress("Address not found.");
+          }
+        } catch (error) {
+          console.log("Geocoding error:", error.message);
+          setAddress("Error looking up address.");
+        }
+      } else {
+        setAddress("Add your Google API key to see address.");
+      }
+
+      // Nearby restaurants based on user location
+      const userLocation = { latitude, longitude };
+      const generatedRestaurants = [
+        {
+          id: "1",
+          name: "Cheers Bar",
+          latitude: latitude + 0.002,
+          longitude: longitude + 0.001,
+        },
+        {
+          id: "2",
+          name: "Central Perk",
+          latitude: latitude - 0.0025,
+          longitude: longitude + 0.0015,
+        },
+        {
+          id: "3",
+          name: "Paddy's Irish Pub",
+          latitude: latitude + 0.0015,
+          longitude: longitude - 0.002,
+        },
+      ];
+
+      setRestaurants(generatedRestaurants);
+      const nearest = findNearest(userLocation, generatedRestaurants);
+      setNearestRestaurant(nearest);
+    };
 
     (async () => {
       try {
@@ -161,7 +189,7 @@ export default function App() {
         const current = await Location.getCurrentPositionAsync({});
         await setPosition(current);
 
-        // Position changes
+        // Watch position changes
         watcher = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.High,
@@ -181,7 +209,7 @@ export default function App() {
     return () => {
       watcher?.remove();
     };
-  }, []);
+  }, []); 
 
   // Overlay button 
   function onClickIpa() {
@@ -222,10 +250,9 @@ export default function App() {
     );
   }
 
-  const userLocation = { latitude, longitude };
-
   return (
     <SafeAreaView style={styles.container}>
+      {/* IPA / Stout overlay buttons */}
       <View style={styles.buttonRow}>
         <Text style={ipaStyles} onPress={onClickIpa}>
           IPA Fans
@@ -235,7 +262,7 @@ export default function App() {
         </Text>
       </View>
 
-      {/*  Map (What's around me + Plotting points + Overlays) */}
+      {/* Map */}
       <MapView
         style={styles.map}
         showsUserLocation
@@ -361,3 +388,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+
